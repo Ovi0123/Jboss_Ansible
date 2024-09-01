@@ -1,0 +1,20 @@
+---
+- name: Apply Jboss Patch and Restart
+  hosts: localhost
+  become: yes
+
+  tasks:
+    - name: Copy Patch files to remote host
+      copy:
+        src: /mnt/d/WSLUBUNTU/jboss-eap-7.4.16-patch.zip
+        dest: /mnt/d/WSLUBUNTU/ansible/Jboss_patches
+
+    - name: Apply Patch
+      shell: "/mnt/d/WSLUBUNTU/jboss-eap-7.4/bin/jboss-cli.sh --connect --command='patch apply /mnt/d/WSLUBUNTU/ansible/Jboss_patches/jboss-eap-7.4.16-patch.zip'"
+
+    - name: Stop JBoss service
+      command: /mnt/d/WSLUBUNTU/ansible/stop_script.sh
+      ignore_errors: yes
+
+    - name: Start JBoss service
+      command: /mnt/d/WSLUBUNTU/ansible/start_script.sh

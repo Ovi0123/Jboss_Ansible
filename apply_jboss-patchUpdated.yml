@@ -1,0 +1,62 @@
+---
+- name: Apply Jboss Patch and Restart
+  hosts: localhost
+  vars:
+    new_patch_version: "7.4.16.GA"
+  become: yes
+  
+
+  tasks:
+    - name: Copy Patch files to remote host
+      copy:
+        src: /mnt/d/WSLUBUNTU/jboss-eap-7.4.16-patch.zip
+        dest: /mnt/d/WSLUBUNTU/ansible/Jboss_patches
+    
+    - name: Check current patch version
+      shell: "/mnt/d/WSLUBUNTU/jboss-eap-7.4/bin/jboss-cli.sh --connect --command='patch info'"
+      register: current_patch_version
+      ignore_errors: yes
+
+        #- name: Debug Current patch version
+        #debug:
+        #var: current_patch_version
+
+
+    - name: Extract version number from current_patch_version
+      set_fact: 
+        current_version_number: "{{ current_patch_version.stdout_lines[0] | regex_replace('^Version:\\s+', '') }}"
+
+
+    - name: Print current patch version
+      debug:
+        msg: "Current patch version is {{ current_version_number }}"
+
+
+    - name: Compare versions and apply patch if newer
+      shell: "/mnt/d/WSLUBUNTU/jboss-eap-7.4/bin/jboss-cli.sh --connect --command='patch apply /mnt/d/WSLUBUNTU/ansible/Jboss_patches/jboss-eap-7.4.16-patch.zip'"
+      when: current_patch_version.stdout is not defined or new_patch_version > current_version_number
+      register: patch_result
+
+    - name: Display message if patch already up to date
+      debug:
+        msg: "Patch is already up to date, no action required."
+      when: current_version_number == new_patch_version
+
+    - name: Apply patch and restart server if patch applied
+      block:
+        - name: Stop JBoss service
+          command: /mnt/d/WSLUBUNTU/ansible/stop_script.sh
+          ignore_errors: yes
+          when: patch_result.changed
+
+        - name: Start JBoss service
+          command: /mnt/d/WSLUBUNTU/ansible/start_script.sh
+          when: patch_result.changed
+      when: patch_result.changed | default(false)
+
+    - name: Handle errors or failures during patch application
+      debug:
+        msg: "Failed to apply the patch"
+          #when: patch_result.rc != 0
+      when: patch_result is failed or patch_result is skipped
+
