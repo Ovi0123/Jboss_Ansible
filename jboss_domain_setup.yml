@@ -1,0 +1,159 @@
+---
+- name: Set up JBoss EAP 7.4 Domain Mode
+  hosts: localhost
+  become: yes
+  vars_files:
+    - vars.yml
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+
+  tasks:
+
+    - name: Ensure JBoss EAP is unzipped to the desired folder
+      unarchive:
+        src: "/mnt/d/WSLUBUNTU/ansible/jboss-eap-7.4.zip"
+        dest: "{{ jboss_install_dir }}"
+        remote_src: yes
+
+    - name: Create domain controller folder
+      copy:
+        src: "{{ jboss_install_dir }}/jboss-eap-7.4/"
+        dest: "{{ jboss_domain_dir }}/"
+        remote_src: yes
+        mode: '0755'
+      
+    - name: Backup host-master.xml
+      copy:
+        src: "{{ jboss_domain_dir }}/domain/configuration/host-master.xml"
+        dest: "{{ jboss_domain_dir }}/domain/configuration/host-master.xml.bak"
+        remote_src: yes
+        mode: '0755'
+      ignore_errors: yes
+
+    - name: Configure management-interfaces in host-master.xml
+      xml:
+        path: "{{ jboss_domain_dir }}/domain/configuration/host-master.xml"
+        xpath: "/x:host/x:management/x:management-interfaces/x:http-interface/x:socket"
+        namespaces:
+          x: "urn:jboss:domain:16.0"
+        attribute: "port"
+        value: "${jboss.management.http.port:{{ domain_http_port }}}"
+      
+    
+    - name: Add native-interface configuration
+      replace:
+        path: "{{ jboss_domain_dir }}/domain/configuration/host-master.xml"
+        regexp: '(</management-interfaces>)'
+        replace: |
+          <native-interface security-realm="ManagementRealm">
+            <socket interface="management" port="${jboss.management.http.port:{{ domain_native_port }}}" />
+          </native-interface>
+          \1
+    
+    - name: Define variables
+      set_fact:
+        jboss_domain_bin_dir: "{{ jboss_domain_dir }}/bin"
+        log_file: "{{ jboss_install_dir }}/jboss_user_creation.log"
+
+    - name: Run create-jboss-user.sh script
+      command: >
+        {{ jboss_check_dir }}/create-jboss-user.sh
+        {{ jboss_domain_bin_dir }}
+        {{ log_file }}
+
+    - name: Extract secret value from log file
+      shell: grep "secret value" "{{ log_file }}" | cut -d '=' -f2 | cut -d '"' -f2
+      register: secret_value_result
+      changed_when: false  
+
+    - name: Store the secret value in a variable
+      set_fact:
+        secret_value: "{{ secret_value_result.stdout }}"
+
+    - name: Debug secret value
+      debug:
+        msg: "The extracted secret value is: {{ secret_value }}"
+
+    - name: Create slave folder from JBoss installation
+      copy:
+        src: "{{ jboss_install_dir }}/jboss-eap-7.4/"
+        dest: "{{ jboss_slave_dir }}/"
+        remote_src: yes
+        mode: '0755'
+
+    - name: Backup host-slave.xml
+      copy:
+        src: "{{ jboss_slave_dir }}/domain/configuration/host-slave.xml"
+        dest: "{{ jboss_slave_dir }}/domain/configuration/host-slave.xml.bak"
+        remote_src: yes
+        mode: '0755'
+      ignore_errors: yes
+    
+    - name: Configure host-slave.xml
+      xml:
+        path: "{{ jboss_slave_dir }}/domain/configuration/host-slave.xml"
+        xpath: "/x:host"
+        namespaces:
+          x: "urn:jboss:domain:16.0"
+        attribute: "name"
+        value: "hostSlave1"
+
+    - name: Configure secret value in host-slave.xml
+      shell: "sed -i 's/secret value=\"[^\"]*\"/secret value=\"{{ secret_value }}\"/' {{ jboss_slave_dir }}/domain/configuration/host-slave.xml"
+   
+    - name: Remove existing static-discovery element
+      xml:
+        path: "{{ jboss_slave_dir }}/domain/configuration/host-slave.xml"
+        xpath: "/x:host/x:domain-controller/x:remote/x:discovery-options/x:static-discovery"
+        namespaces:
+          x: "urn:jboss:domain:16.0"
+        state: absent
+    
+    - name: Add updated static-discovery element
+      lineinfile:
+        path: "{{ jboss_slave_dir }}/domain/configuration/host-slave.xml"
+        insertafter: '<discovery-options>'
+        line: '<static-discovery name="primary" host="${jboss.domain.master.address}" port="${jboss.domain.master.port:{{ domain_native_port }}}"/>'
+      
+    - name: Configure management-interfaces for slave
+      xml:
+        path: "{{ jboss_slave_dir }}/domain/configuration/host-slave.xml"
+        xpath: "/x:host/x:management/x:management-interfaces/x:http-interface/x:socket"
+        namespaces:
+          x: "urn:jboss:domain:16.0"
+        attribute: "port"
+        value: "${jboss.management.http.port:{{ host_http_port }}}"
+
+    - name: Ensure VAULT folder is unzipped to the desired folder
+      unarchive:
+        src: "{{ jboss_check_dir }}/Vault.zip"
+        dest: "{{ jboss_slave_dir }}"
+        remote_src: yes
+
+    # - name: Add vault configuration to host-slave.xml
+    #   shell: |
+    #     sed -i '/<\/extensions>/a\
+    #     <vault>\
+    #       <vault-option name="KEYSTORE_URL" value="{{ jboss_slave_dir }}/Vault/vault.keystore"/>\
+    #       <vault-option name="KEYSTORE_PASSWORD" value="MASK-5WNXs8oEbrs"/>\
+    #       <vault-option name="KEYSTORE_ALIAS" value="vault"/>\
+    #       <vault-option name="SALT" value="12345678"/>\
+    #       <vault-option name="ITERATION_COUNT" value="50"/>\
+    #       <vault-option name="ENC_FILE_DIR" value="{{ jboss_slave_dir }}/Vault/vault/"/>\
+    #     </vault>' {{ jboss_slave_dir }}/domain/configuration/host-slave.xml
+    #   become: yes  # Add this if you need elevated permissions to modify the file
+
+
+    
+  
+
+    - name: Start JBoss Domain Controller
+      shell: "nohup {{ jboss_domain_dir }}/bin/domain.sh --domain-config=domain.xml --host-config=host-master.xml -Djboss.bind.address.management={{ jboss_bind_address_management }} 2>&1 &"
+      async: 45
+      poll: 0
+
+    - name: Start JBoss Slave
+      shell: "nohup {{ jboss_slave_dir }}/bin/domain.sh --host-config=host-slave.xml -Djboss.bind.address={{ jboss_bind_address }} -Djboss.bind.address.management={{ jboss_bind_address_management }} -Djboss.domain.master.address={{ jboss_domain_master_address }} 2>&1 &"
+      async: 45
+      poll: 0
+

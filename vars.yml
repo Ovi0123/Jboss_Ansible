@@ -1,0 +1,13 @@
+jboss_install_dir: "/mnt/d/WSLUBUNTU/ansible/Jboss_new_Installation"
+jboss_check_dir: "/mnt/d/WSLUBUNTU/ansible/Jboss_installation"
+jboss_domain_dir: "/mnt/d/WSLUBUNTU/ansible/Jboss_new_Installation/jboss_7.4_domaincontroller"
+jboss_slave_dir: "/mnt/d/WSLUBUNTU/ansible/Jboss_new_Installation/jboss_7.4_slave"
+domain_native_port: 8700
+domain_http_port: 8701
+host_http_port: 8702
+jboss_bind_address_management: "127.0.0.1"
+jboss_bind_address: "127.0.0.1"
+jboss_domain_master_address: "127.0.0.1"
+management_user: "jboss"
+management_password: "jboss@123"
+

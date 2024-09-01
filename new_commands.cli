@@ -1,0 +1,11 @@
+/profile=full-ha:clone(to-profile=jboss-full-ha-profile)
+/profile=jboss-full-ha-profile/subsystem=messaging-activemq:remove()
+/server-group=jboss-test-server-group:add(profile=jboss-full-ha-profile, socket-binding-group=full-ha-sockets, socket-binding-port-offset=10)
+/host=hostSlave1/server-config=JBOSS:add(group=jboss-test-server-group, socket-binding-group=full-ha-sockets, socket-binding-port-offset=100)
+/host=hostSlave1/server-config=JBOSS/jvm=default:add()
+/host=hostSlave1/server-config=JBOSS/jvm=default:add-jvm-option(jvm-option="-DJENKINS_HOME=/mnt/d/WSLUBUNTU/ansible/Jboss_installation/JENKINS_HOME")
+/host=hostSlave1/jvm=default:write-attribute(name=max-heap-size, value="512m")
+deploy /mnt/d/WSLUBUNTU/ansible/Jboss_installation/jenkins.war --server-groups=jboss-test-server-group
+/host=hostSlave1/server-config=JBOSS:start
+
+

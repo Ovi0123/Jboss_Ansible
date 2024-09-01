@@ -1,0 +1,14 @@
+---
+- name: Manage JBoss Domain
+  hosts: localhost
+  gather_facts: no
+  vars_files:
+    - vars.yml
+  tasks:
+
+    - name: Connect to JBoss Domain Controller and create profile
+      ansible.builtin.command:
+        cmd: |
+          {{ jboss_domain_dir }}/bin/jboss-cli.sh --connect --controller={{ jboss_bind_address }}:{{ domain_http_port }} --user={{ management_user }} --password={{ management_password }} --file={{ jboss_check_dir }}/new_commands.cli
+        chdir: "{{ jboss_domain_dir }}/bin"
+      
